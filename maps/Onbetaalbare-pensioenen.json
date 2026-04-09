@@ -1,0 +1,73 @@
+{
+  "title": "Onbetaalbare pensioenen",
+  "nodes": [
+    {
+      "connections": [],
+      "id": "mnr8o42yu6bp",
+      "parentId": null,
+      "x": 400,
+      "y": 50,
+      "label": "De pensioenen zijn onbetaalbaar",
+      "notes": "Een argument dat gebruik",
+      "links": [],
+      "type": "claim"
+    },
+    {
+      "connections": [],
+      "id": "mnr8tnsabz99",
+      "parentId": "mnr8o42yu6bp",
+      "x": 1250,
+      "y": 200,
+      "label": "5 landen in de EU geven nu al evenveel uit aan pensioenen, dan wat wij in 2050 zouden moeten uitgeven.",
+      "notes": "",
+      "links": [],
+      "type": "objection"
+    },
+    {
+      "connections": [
+        "mnr9ir9jdln4"
+      ],
+      "id": "mnr9d97ajd1v",
+      "parentId": "mnr8o42yu6bp",
+      "x": 250,
+      "y": 200,
+      "label": "Dat hervormingen nodig zijn, staat buiten kijf. Want de feiten zijn\nwat ze zijn. In de jaren 1990 waren er vier actieve mensen voor elke 65-plusser. Vandaag zijn dat er nog drie. En tegen\n2060 zal het cijfer zakken naar twee.' ",
+      "notes": "",
+      "links": [],
+      "type": "support"
+    },
+    {
+      "connections": [],
+      "id": "mnr9epo4hp1s",
+      "parentId": "mnr9d97ajd1v",
+      "x": 250,
+      "y": 500,
+      "label": "De groep niet-actieven en de groep gepensioneerden dat zijn twee verschillende zaken.",
+      "notes": "",
+      "links": [],
+      "type": "objection"
+    },
+    {
+      "connections": [],
+      "id": "mnr9fvjtpo92",
+      "parentId": "mnr9epo4hp1s",
+      "x": 250,
+      "y": 700,
+      "label": "In 2070 zullen we volgens het Planbureau vijf miljoen\nwerkenden tellen en 12,9 miljoen inwoners.* Dat is nog\naltijd: 1,6 niet-actieven per actieve. ",
+      "notes": "",
+      "links": [],
+      "type": "support"
+    },
+    {
+      "connections": [],
+      "id": "mnr9ir9jdln4",
+      "parentId": "mnr8tnsabz99",
+      "x": 1250,
+      "y": 400,
+      "label": "Oostenrijk en Frankrijk spenderen nu al meer dan veertien procent, Italië en Griekenland zelfs meer dan vijftien procent van het bbp aan de pensioenen. ",
+      "notes": "",
+      "links": [],
+      "type": "support"
+    }
+  ]
+}
