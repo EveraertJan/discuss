@@ -1,0 +1,55 @@
+{
+  "title": "Untitled Argument",
+  "nodes": [
+    {
+      "id": "mnr80hgcf79z",
+      "parentId": null,
+      "x": -100,
+      "y": 0,
+      "label": "De situatie is onhoudbaar!",
+      "notes": "",
+      "links": [],
+      "type": "claim"
+    },
+    {
+      "id": "mnr80raxuz39",
+      "parentId": "mnr80hgcf79z",
+      "x": -200,
+      "y": 150,
+      "label": "Waarom is de situatie onhoudbaar?",
+      "notes": "",
+      "links": [],
+      "type": "question"
+    },
+    {
+      "id": "mnr81hq2cokk",
+      "parentId": "mnr80raxuz39",
+      "x": -200,
+      "y": 300,
+      "label": "De pensioenen zijn onbetaalbaar",
+      "notes": "",
+      "links": [],
+      "type": "claim"
+    },
+    {
+      "id": "mnr81vl32ssp",
+      "parentId": "mnr80raxuz39",
+      "x": 0,
+      "y": 300,
+      "label": "De werklozen zijn te duur!",
+      "notes": "",
+      "links": [],
+      "type": "claim"
+    },
+    {
+      "id": "mnr82b5n92ae",
+      "parentId": "mnr80hgcf79z",
+      "x": 0,
+      "y": 150,
+      "label": "De tewerkstellingsgraad ligt hoog",
+      "notes": "",
+      "links": [],
+      "type": "rebuttal"
+    }
+  ]
+}
