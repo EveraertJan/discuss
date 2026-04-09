@@ -7,12 +7,6 @@ import { NODE_TYPES } from '../config.js';
 const DRAG_THRESHOLD = 4;
 const GRID           = 50;   // snap-to-grid resolution in world units
 
-// Discrete zoom levels: 80 %, 100 %, 120 %
-const ZOOM_LEVELS  = [0.8, 1.0, 1.2];
-const ZOOM_COOLDOWN = 180;  // ms — ignore wheel events fired within this window
-let _lastZoomTime  = 0;
-let _pinchLiveScale = 1;    // free-scale during an active pinch, snapped on release
-
 let _canvas          = null;
 let _isDraggingBg    = false;
 let _isDraggingNode  = false;
@@ -22,10 +16,6 @@ let _dragOffset      = { x: 0, y: 0 };
 let _pointerDownPos  = null;
 let _didDrag         = false;
 
-// Pinch state
-let _pinchStartDist  = 0;
-let _pinchStartScale = 1;
-let _pinchMid        = { x: 0, y: 0 };
 
 // ── Init ──────────────────────────────────────────────────────────────────────
 
@@ -37,12 +27,6 @@ export function initInteraction(canvasEl) {
   _canvas.addEventListener('pointerup',     _onPointerUp);
   _canvas.addEventListener('pointercancel', _onPointerUp);
   _canvas.addEventListener('dblclick',      _onDblClick);
-
-  _canvas.addEventListener('touchstart', _onTouchStart, { passive: false });
-  _canvas.addEventListener('touchmove',  _onTouchMove,  { passive: false });
-  _canvas.addEventListener('touchend',   _onTouchEnd);
-
-  _canvas.addEventListener('wheel', _onWheel, { passive: false });
 
   window.addEventListener('keydown', _onKey);
 }
@@ -157,100 +141,6 @@ function _onPointerUp(e) {
   _pointerDownPos = null;
 }
 
-// ── Touch / Pinch ─────────────────────────────────────────────────────────────
-
-function _touchDist(t) {
-  const dx = t[0].clientX - t[1].clientX;
-  const dy = t[0].clientY - t[1].clientY;
-  return Math.sqrt(dx * dx + dy * dy);
-}
-
-function _touchMid(t) {
-  const rect = _canvas.getBoundingClientRect();
-  return {
-    x: (t[0].clientX + t[1].clientX) / 2 - rect.left,
-    y: (t[0].clientY + t[1].clientY) / 2 - rect.top,
-  };
-}
-
-function _onTouchStart(e) {
-  if (e.touches.length === 2) {
-    e.preventDefault();
-    _isDraggingBg    = false;
-    _isDraggingNode  = false;
-    _pinchStartDist  = _touchDist(e.touches);
-    _pinchStartScale = getState().viewport.scale;
-    _pinchLiveScale  = _pinchStartScale;
-    _pinchMid        = _touchMid(e.touches);
-  }
-}
-
-function _onTouchMove(e) {
-  if (e.touches.length === 2) {
-    e.preventDefault();
-    const dist  = _touchDist(e.touches);
-    // Allow free scaling during the gesture for live feedback
-    const MIN = ZOOM_LEVELS[0] * 0.9;
-    const MAX = ZOOM_LEVELS[ZOOM_LEVELS.length - 1] * 1.1;
-    _pinchLiveScale = Math.min(MAX, Math.max(MIN, _pinchStartScale * (dist / _pinchStartDist)));
-    const state = getState();
-    const mid   = screenToWorld(_pinchMid.x, _pinchMid.y, state.viewport);
-    dispatch({
-      type: 'SET_VIEWPORT',
-      viewport: { scale: _pinchLiveScale, x: _pinchMid.x - mid.x * _pinchLiveScale, y: _pinchMid.y - mid.y * _pinchLiveScale },
-    });
-  }
-}
-
-function _onTouchEnd() {
-  if (_pinchStartDist > 0) {
-    // Snap to nearest discrete level
-    const direction = _pinchLiveScale > _pinchStartScale ? 1 : -1;
-    _stepZoom(direction, _pinchMid);
-  }
-  _pinchStartDist = 0;
-}
-
-// ── Wheel zoom — steps through ZOOM_LEVELS ────────────────────────────────────
-
-function _onWheel(e) {
-  e.preventDefault();
-  const now = Date.now();
-  if (now - _lastZoomTime < ZOOM_COOLDOWN) return;
-  _lastZoomTime = now;
-
-  const direction = e.deltaY > 0 ? -1 : 1;  // scroll down = zoom out
-  _stepZoom(direction, _canvasPos(e));
-}
-
-/** Advance to the next discrete zoom level in the given direction (+1 / -1).
- *  Keeps the world point under `focalPt` stationary. */
-function _stepZoom(direction, focalPt) {
-  const state   = getState();
-  const current = state.viewport.scale;
-
-  // Find the index of the closest current level
-  let idx = 0;
-  let minDiff = Infinity;
-  ZOOM_LEVELS.forEach((lvl, i) => {
-    const d = Math.abs(lvl - current);
-    if (d < minDiff) { minDiff = d; idx = i; }
-  });
-
-  const nextIdx = Math.max(0, Math.min(ZOOM_LEVELS.length - 1, idx + direction));
-  const scale   = ZOOM_LEVELS[nextIdx];
-  if (scale === current) return;
-
-  const world = screenToWorld(focalPt.x, focalPt.y, state.viewport);
-  dispatch({
-    type: 'SET_VIEWPORT',
-    viewport: {
-      scale,
-      x: focalPt.x - world.x * scale,
-      y: focalPt.y - world.y * scale,
-    },
-  });
-}
 
 // ── Keyboard ──────────────────────────────────────────────────────────────────
 

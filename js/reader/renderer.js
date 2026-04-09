@@ -6,15 +6,17 @@ import { goTo, goBack, getCurrent, getChildren, getRoots, canGoBack, getHistoryN
 let _container  = null;
 let _topBar     = null;
 let _breadcrumb = null;
-let _onLoad     = null; // callback when user requests file import
+let _onLoad     = null;     // callback: file import
+let _onGitHub   = null;     // callback: GitHub load
 
 // ── Public API ────────────────────────────────────────────────────────────────
 
-export function initRenderer({ container, topBar, breadcrumb, onLoad }) {
+export function initRenderer({ container, topBar, breadcrumb, onLoad, onGitHub }) {
   _container  = container;
   _topBar     = topBar;
   _breadcrumb = breadcrumb;
   _onLoad     = onLoad;
+  _onGitHub   = onGitHub;
 }
 
 /** Render the initial load screen (no tree loaded). */
@@ -29,12 +31,14 @@ export function renderLoadScreen() {
         <h1>Discuss</h1>
         <p>Load an argument map to begin</p>
         <button class="btn-primary js-import">Import JSON</button>
+        <button class="btn-primary js-github">Load from GitHub</button>
         <button class="btn-ghost js-what">What is this?</button>
       </div>
     </div>
   `;
 
   _container.querySelector('.js-import').addEventListener('click', _onLoad);
+  _container.querySelector('.js-github').addEventListener('click', () => _onGitHub?.());
   _container.querySelector('.js-what').addEventListener('click', () => {
     document.getElementById('btn-help')?.click();
   });

@@ -6,13 +6,14 @@ import { initInteraction, fitToScreen, autoLayout } from './interaction.js';
 import { initSidebar }                    from './sidebar.js';
 import { initOnboarding }                 from '../onboarding.js';
 import { exportJSON, importJSON, pickFile } from '../io.js';
+import { openGitHubModal }                from '../github-ui.js';
 import { NODE_TYPES }                     from '../config.js';
 
 // ── Boot ──────────────────────────────────────────────────────────────────────
 
 document.addEventListener('DOMContentLoaded', () => {
-  const canvas  = document.getElementById('canvas');
-  const sidebar = document.getElementById('sidebar');
+  const canvas    = document.getElementById('canvas');
+  const sidebar   = document.getElementById('sidebar');
   const emptyHint = document.getElementById('empty-hint');
 
   initCanvas(canvas);
@@ -22,13 +23,10 @@ document.addEventListener('DOMContentLoaded', () => {
   // Re-render canvas on every state change
   subscribe(state => {
     render(state);
-    // Toggle empty hint
     if (emptyHint) emptyHint.style.display = state.nodes.length ? 'none' : 'block';
-    // Update document title
     document.title = `${state.title} — Discuss Builder`;
   });
 
-  // Initial render
   render(getState());
 
   // ── Toolbar buttons ───────────────────────────────────────────────────────
@@ -60,10 +58,21 @@ document.addEventListener('DOMContentLoaded', () => {
 
   document.getElementById('btn-add')?.addEventListener('click', () => {
     const state = getState();
-    // Place new node roughly in center of viewport
-    const cx = (document.getElementById('canvas').offsetWidth  / 2 - state.viewport.x) / state.viewport.scale;
-    const cy = (document.getElementById('canvas').offsetHeight / 2 - state.viewport.y) / state.viewport.scale;
+    const cx = (canvas.offsetWidth  / 2 - state.viewport.x) / state.viewport.scale;
+    const cy = (canvas.offsetHeight / 2 - state.viewport.y) / state.viewport.scale;
     dispatch({ type: 'ADD_NODE', parentId: null, x: cx - 80, y: cy - 24, nodeType: NODE_TYPES.CLAIM });
+  });
+
+  // GitHub — save and load
+  document.getElementById('btn-github')?.addEventListener('click', () => {
+    openGitHubModal({
+      mode:     'save',
+      getState: getState,
+      onLoad:   tree => {
+        dispatch({ type: 'LOAD_TREE', tree });
+        fitToScreen(getState());
+      },
+    });
   });
 
   // ── Editable title ────────────────────────────────────────────────────────
@@ -77,9 +86,7 @@ document.addEventListener('DOMContentLoaded', () => {
       if (e.key === 'Enter') { e.preventDefault(); titleEl.blur(); }
     });
     subscribe(state => {
-      if (document.activeElement !== titleEl) {
-        titleEl.textContent = state.title;
-      }
+      if (document.activeElement !== titleEl) titleEl.textContent = state.title;
     });
   }
 
@@ -88,9 +95,9 @@ document.addEventListener('DOMContentLoaded', () => {
   initOnboarding({
     steps: [
       'Build your argument map. Each box is a claim or response.',
-      'Drag the canvas to pan. Scroll or pinch to zoom.',
+      'Drag the canvas to pan. Double-click empty space to add a node.',
       'Tap a node to edit it. Use "Add Response" to branch the argument.',
-      'Export your map as a .json file to share or load in the Reader.',
+      'Use GitHub to save maps, track changes, and see who edited what.',
     ],
     storageKey: 'builder',
     helpBtn:    document.getElementById('btn-help'),
