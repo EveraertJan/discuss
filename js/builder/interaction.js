@@ -28,9 +28,10 @@ let _dragOffset      = { x: 0, y: 0 };
 let _pointerDownPos  = null;
 let _didDrag         = false;
 
-// Multi-touch / pinch state
-const _pointers      = new Map();   // pointerId → {x, y} canvas-space
-let _lastPinchDist   = 0;
+// Multi-touch pan state
+const _pointers       = new Map();   // pointerId → {x, y} canvas-space
+let _lastPinchDist    = 0;           // kept for transition logic only
+let _lastPinchCenter  = null;        // midpoint of two fingers for panning
 
 // Double-tap state (touch only)
 let _lastTap         = { time: 0, x: 0, y: 0 };
@@ -77,13 +78,12 @@ function _onPointerDown(e) {
   _pointers.set(e.pointerId, pos);
   _canvas.setPointerCapture(e.pointerId);
 
-  // Two fingers — start pinch
+  // Two fingers — start two-finger pan
   if (_pointers.size === 2) {
-    // Cancel any in-progress single-finger drag
-    _isDraggingBg   = false;
-    _isDraggingNode = false;
+    _isDraggingBg    = false;
+    _isDraggingNode  = false;
     _canvas.classList.remove('dragging-bg', 'dragging-node');
-    _lastPinchDist = _getPinchDist();
+    _lastPinchCenter = _getPinchCenter();
     return;
   }
 
@@ -133,24 +133,17 @@ function _onPointerMove(e) {
   const pos = _canvasPos(e);
   _pointers.set(e.pointerId, pos);
 
-  // ── Two-finger pinch ───────────────────────────────────────────────────────
+  // ── Two-finger pan (no zoom) ──────────────────────────────────────────────
   if (_pointers.size === 2) {
-    const dist  = _getPinchDist();
-    const ratio = _lastPinchDist > 0 ? dist / _lastPinchDist : 1;
-    _lastPinchDist = dist;
-
-    if (isFinite(ratio) && ratio > 0 && ratio !== 1) {
-      const center   = _getPinchCenter();
-      const state    = getState();
-      const newScale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, state.viewport.scale * ratio));
-      const sc       = newScale / state.viewport.scale;
+    const center  = _getPinchCenter();
+    const deltaX  = center.x - (_lastPinchCenter?.x ?? center.x);
+    const deltaY  = center.y - (_lastPinchCenter?.y ?? center.y);
+    _lastPinchCenter = center;
+    if (deltaX !== 0 || deltaY !== 0) {
+      const state = getState();
       dispatch({
         type:     'SET_VIEWPORT',
-        viewport: {
-          scale: newScale,
-          x:     center.x + (state.viewport.x - center.x) * sc,
-          y:     center.y + (state.viewport.y - center.y) * sc,
-        },
+        viewport: { x: state.viewport.x + deltaX, y: state.viewport.y + deltaY },
       });
     }
     return;
@@ -224,10 +217,10 @@ function _onPointerUp(e) {
 
   // ── Cross-edge badge click (delete) ────────────────────────────────────────
   if (!_didDrag) {
-    const state  = getState();
-    const edgeId = hitTestEdgeBadge(pos.x, pos.y, state);
-    if (edgeId) {
-      dispatch({ type: 'DELETE_EDGE', id: edgeId });
+    const state = getState();
+    const edge  = hitTestEdgeBadge(pos.x, pos.y, state);
+    if (edge) {
+      dispatch({ type: 'DELETE_EDGE', from: edge.from, to: edge.to });
       setHoveredEdge(null);
     }
   }
@@ -267,11 +260,12 @@ function _onPointerUp(e) {
 
   _pointers.delete(e.pointerId);
 
-  // ── Transition: pinch → single-finger pan ─────────────────────────────────
+  // ── Transition: two-finger pan → single-finger pan ───────────────────────
   if (_pointers.size === 1) {
     const [remaining] = _pointers.values();
-    _lastPinchDist  = 0;
-    _lastPointer    = remaining;
+    _lastPinchDist   = 0;
+    _lastPinchCenter = null;
+    _lastPointer     = remaining;
     _pointerDownPos = remaining;
     _didDrag        = false;
     _isDraggingBg   = true;
@@ -284,21 +278,23 @@ function _onPointerUp(e) {
 
   // ── Full reset ─────────────────────────────────────────────────────────────
   _canvas.classList.remove('dragging-bg', 'dragging-node', 'hovering-node');
-  _isDraggingBg   = false;
-  _isDraggingNode = false;
-  _dragNodeId     = null;
-  _pointerDownPos = null;
-  _lastPinchDist  = 0;
+  _isDraggingBg    = false;
+  _isDraggingNode  = false;
+  _dragNodeId      = null;
+  _pointerDownPos  = null;
+  _lastPinchDist   = 0;
+  _lastPinchCenter = null;
 }
 
 function _onPointerCancel(e) {
   _pointers.delete(e.pointerId);
   _canvas.classList.remove('dragging-bg', 'dragging-node', 'hovering-node');
-  _isDraggingBg   = false;
-  _isDraggingNode = false;
-  _dragNodeId     = null;
-  _pointerDownPos = null;
-  _lastPinchDist  = 0;
+  _isDraggingBg    = false;
+  _isDraggingNode  = false;
+  _dragNodeId      = null;
+  _pointerDownPos  = null;
+  _lastPinchDist   = 0;
+  _lastPinchCenter = null;
 }
 
 
@@ -393,21 +389,19 @@ export function fitToScreen(state) {
     maxY = Math.max(maxY, n.y + 80);
   });
 
-  const padding = 64;
-  const cw      = _canvas.offsetWidth;
-  const ch      = _canvas.offsetHeight;
-  const tw      = maxX - minX;
-  const th      = maxY - minY;
-  const scale   = Math.min(MAX_SCALE, Math.max(MIN_SCALE,
-    Math.min((cw - padding * 2) / tw, (ch - padding * 2) / th)
-  ));
+  // Scale is always 1 — just pan to centre the content
+  const scale = 1;
+  const cw    = _canvas.offsetWidth;
+  const ch    = _canvas.offsetHeight;
+  const tw    = maxX - minX;
+  const th    = maxY - minY;
 
   dispatch({
     type: 'SET_VIEWPORT',
     viewport: {
       scale,
-      x: (cw - tw * scale) / 2 - minX * scale,
-      y: (ch - th * scale) / 2 - minY * scale,
+      x: (cw - tw) / 2 - minX,
+      y: (ch - th) / 2 - minY,
     },
   });
 }

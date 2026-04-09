@@ -9,7 +9,6 @@ function uid() {
 const _state = {
   title:      'Untitled Argument',
   nodes:      [],
-  edges:      [],   // cross-connections: [{ id, from, to }]
   selectedId: null,
   viewport:   { x: 0, y: 0, scale: 1 },
 };
@@ -42,14 +41,15 @@ export function dispatch(action) {
 
     case 'ADD_NODE': {
       const node = {
-        id:       uid(),
-        parentId: action.parentId ?? null,
-        x:        action.x ?? 120,
-        y:        action.y ?? 120,
-        label:    action.label ?? 'New node',
-        notes:    action.notes ?? '',
-        links:    action.links ?? [],
-        type:     action.nodeType ?? NODE_TYPES.CLAIM,
+        id:          uid(),
+        parentId:    action.parentId ?? null,
+        x:           action.x ?? 120,
+        y:           action.y ?? 120,
+        label:       action.label ?? 'New node',
+        notes:       action.notes ?? '',
+        links:       action.links ?? [],
+        connections: [],   // ids of nodes this node has cross-connections to
+        type:        action.nodeType ?? NODE_TYPES.CLAIM,
       };
       _state.nodes.push(node);
       _state.selectedId = node.id;
@@ -78,22 +78,35 @@ export function dispatch(action) {
       };
       collect(action.id);
       _state.nodes = _state.nodes.filter(n => !toDelete.has(n.id));
-      _state.edges = _state.edges.filter(e => !toDelete.has(e.from) && !toDelete.has(e.to));
+      // Clean up dangling connections on surviving nodes
+      _state.nodes.forEach(n => {
+        if (n.connections?.length) {
+          n.connections = n.connections.filter(id => !toDelete.has(id));
+        }
+      });
       if (toDelete.has(_state.selectedId)) _state.selectedId = null;
       break;
     }
 
+    // ADD_EDGE — adds target id to source node's connections array
     case 'ADD_EDGE': {
-      const already = _state.edges.some(e => e.from === action.from && e.to === action.to);
-      if (!already && action.from !== action.to) {
-        _state.edges.push({ id: uid(), from: action.from, to: action.to });
+      const node = _state.nodes.find(n => n.id === action.from);
+      if (!node) break;
+      if (!node.connections) node.connections = [];
+      if (action.from !== action.to && !node.connections.includes(action.to)) {
+        node.connections.push(action.to);
       }
       break;
     }
 
-    case 'DELETE_EDGE':
-      _state.edges = _state.edges.filter(e => e.id !== action.id);
+    // DELETE_EDGE — removes target id from source node's connections array
+    case 'DELETE_EDGE': {
+      const node = _state.nodes.find(n => n.id === action.from);
+      if (node?.connections) {
+        node.connections = node.connections.filter(id => id !== action.to);
+      }
       break;
+    }
 
     case 'SELECT_NODE':
       _state.selectedId = action.id ?? null;
@@ -105,8 +118,9 @@ export function dispatch(action) {
 
     case 'LOAD_TREE':
       _state.title      = action.tree.title ?? 'Untitled Argument';
-      _state.nodes      = action.tree.nodes  ?? [];
-      _state.edges      = action.tree.edges  ?? [];
+      _state.nodes      = (action.tree.nodes ?? []).map(n => ({
+        connections: [], ...n,   // default connections to [] for older maps
+      }));
       _state.selectedId = null;
       _state.viewport   = { x: 0, y: 0, scale: 1 };
       break;
@@ -114,7 +128,6 @@ export function dispatch(action) {
     case 'NEW_TREE':
       _state.title      = 'Untitled Argument';
       _state.nodes      = [];
-      _state.edges      = [];
       _state.selectedId = null;
       _state.viewport   = { x: 0, y: 0, scale: 1 };
       break;

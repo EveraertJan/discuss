@@ -1,7 +1,7 @@
 // io.js — JSON export and import (shared)
 
 export function exportJSON(state) {
-  const data = { title: state.title, nodes: state.nodes, edges: state.edges ?? [] };
+  const data = { title: state.title, nodes: state.nodes };
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
   const url  = URL.createObjectURL(blob);
   const a    = Object.assign(document.createElement('a'), {

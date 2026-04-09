@@ -66,41 +66,46 @@ export function hitTestConnectionDot(sx, sy, state) {
 
 /**
  * Hit-test cross-edge delete badges (small × at edge midpoint).
- * Returns edge id or null.
+ * Returns { from, to } or null.
  */
 export function hitTestEdgeBadge(sx, sy, state) {
-  const { nodes, edges = [], viewport } = state;
+  const { nodes, viewport } = state;
   const R = 12;
-  for (const edge of edges) {
-    const fn = nodes.find(n => n.id === edge.from);
-    const tn = nodes.find(n => n.id === edge.to);
-    if (!fn || !tn) continue;
-    const mid = _crossEdgeMid(fn, tn, viewport);
-    const dx  = sx - mid.x;
-    const dy  = sy - mid.y;
-    if (dx * dx + dy * dy <= R * R) return edge.id;
+  for (const fromNode of nodes) {
+    for (const toId of (fromNode.connections ?? [])) {
+      const toNode = nodes.find(n => n.id === toId);
+      if (!toNode) continue;
+      const mid = _crossEdgeMid(fromNode, toNode, viewport);
+      const dx  = sx - mid.x;
+      const dy  = sy - mid.y;
+      if (dx * dx + dy * dy <= R * R) return { from: fromNode.id, to: toId };
+    }
   }
   return null;
 }
 
 /**
- * Find the closest cross-edge to a point (for hover highlight).
- * Returns edge id or null.
+ * Find the closest cross-edge midpoint to a pointer (for hover highlight).
+ * Returns a "fromId:toId" key string or null.
  */
 export function nearestCrossEdge(sx, sy, state) {
-  const { nodes, edges = [], viewport } = state;
+  const { nodes, viewport } = state;
   const THRESHOLD = 16;
-  let bestId   = null;
+  let bestKey  = null;
   let bestDist = Infinity;
-  for (const edge of edges) {
-    const fn = nodes.find(n => n.id === edge.from);
-    const tn = nodes.find(n => n.id === edge.to);
-    if (!fn || !tn) continue;
-    const mid  = _crossEdgeMid(fn, tn, viewport);
-    const dist = Math.hypot(sx - mid.x, sy - mid.y);
-    if (dist < THRESHOLD && dist < bestDist) { bestDist = dist; bestId = edge.id; }
+  for (const fromNode of nodes) {
+    for (const toId of (fromNode.connections ?? [])) {
+      const toNode = nodes.find(n => n.id === toId);
+      if (!toNode) continue;
+      const mid  = _crossEdgeMid(fromNode, toNode, viewport);
+      const dist = Math.hypot(sx - mid.x, sy - mid.y);
+      if (dist < THRESHOLD && dist < bestDist) {
+        bestDist = dist;
+        bestKey  = `${fromNode.id}:${toId}`;
+      }
+    }
   }
-  return bestId;
+  return bestKey;
 }
 
 export function screenToWorld(sx, sy, viewport) {
@@ -127,22 +132,21 @@ function _w2s(wx, wy, viewport) {
   return { x: wx * viewport.scale + viewport.x, y: wy * viewport.scale + viewport.y };
 }
 
-/** Right-centre dot position in screen space. */
+/** Bottom-centre dot position in screen space — drag handle for new connections. */
 function _dotPos(node, viewport) {
   const sh = _nodeHeight(node.label);
-  return _w2s(node.x + NODE_WIDTH, node.y + sh / 2, viewport);
+  return _w2s(node.x + NODE_WIDTH / 2, node.y + sh, viewport);
 }
 
-/** Left-centre entry point in screen space. */
-function _leftCenterPos(node, viewport) {
-  const sh = _nodeHeight(node.label);
-  return _w2s(node.x, node.y + sh / 2, viewport);
+/** Top-centre entry point in screen space. */
+function _topCenterPos(node, viewport) {
+  return _w2s(node.x + NODE_WIDTH / 2, node.y, viewport);
 }
 
-/** Geometric midpoint of a cross-edge (bezier mid ≈ geometric mid for symmetric curve). */
+/** Midpoint of a cross-edge bezier (same formula as primary edges). */
 function _crossEdgeMid(fromNode, toNode, viewport) {
   const fs = _dotPos(fromNode, viewport);
-  const ts = _leftCenterPos(toNode, viewport);
+  const ts = _topCenterPos(toNode, viewport);
   return { x: (fs.x + ts.x) / 2, y: (fs.y + ts.y) / 2 };
 }
 
@@ -223,59 +227,55 @@ function _drawPrimaryEdges({ nodes, viewport }) {
 
 // ── Cross-edges (additional connections) ─────────────────────────────────────
 
-function _drawCrossEdges({ nodes, edges = [], viewport }) {
-  if (!edges.length) return;
+function _drawCrossEdges({ nodes, viewport }) {
   _ctx.save();
 
-  edges.forEach(edge => {
-    const fn = nodes.find(n => n.id === edge.from);
-    const tn = nodes.find(n => n.id === edge.to);
-    if (!fn || !tn) return;
+  nodes.forEach(fn => {
+    (fn.connections ?? []).forEach(toId => {
+      const tn = nodes.find(n => n.id === toId);
+      if (!tn) return;
 
-    const isHovered = edge.id === _hoveredEdgeId;
-    const fs  = _dotPos(fn, viewport);
-    const ts  = _leftCenterPos(tn, viewport);
-    const dx  = Math.abs(ts.x - fs.x);
-    const cp  = Math.max(50, dx * 0.5);
-    const cp1 = { x: fs.x + cp, y: fs.y };
-    const cp2 = { x: ts.x - cp, y: ts.y };
+      const isHovered = _hoveredEdgeId === `${fn.id}:${toId}`;
+      const fs  = _dotPos(fn, viewport);
+      const ts  = _topCenterPos(tn, viewport);
+      const dy  = Math.abs(ts.y - fs.y);
+      const cp  = Math.max(40, dy * 0.5);
+      const cp1 = { x: fs.x, y: fs.y + cp };
+      const cp2 = { x: ts.x, y: ts.y - cp };
 
-    // Curve
-    _ctx.setLineDash([5, 4]);
-    _ctx.strokeStyle = isHovered ? 'rgba(0,0,0,0.7)' : 'rgba(0,0,0,0.3)';
-    _ctx.lineWidth   = isHovered ? 1.5 : 1;
-    _ctx.beginPath();
-    _ctx.moveTo(fs.x, fs.y);
-    _ctx.bezierCurveTo(cp1.x, cp1.y, cp2.x, cp2.y, ts.x, ts.y);
-    _ctx.stroke();
-    _ctx.setLineDash([]);
-
-    // Dot at source
-    const dotR = 3.5;
-    _ctx.fillStyle = 'rgba(0,0,0,0.35)';
-    _ctx.beginPath();
-    _ctx.arc(fs.x, fs.y, dotR, 0, Math.PI * 2);
-    _ctx.fill();
-
-    // Dot at target
-    _ctx.beginPath();
-    _ctx.arc(ts.x, ts.y, dotR, 0, Math.PI * 2);
-    _ctx.fill();
-
-    // Delete badge (×) when hovered
-    if (isHovered) {
-      const mid = { x: (fs.x + ts.x) / 2, y: (fs.y + ts.y) / 2 };
-      const r   = 8;
-      _ctx.fillStyle = _fg();
+      // Same bezier curve style as primary edges, slightly muted
+      _ctx.strokeStyle = isHovered ? _fg() : 'rgba(0,0,0,0.4)';
+      _ctx.lineWidth   = isHovered ? 1.5 : 1;
       _ctx.beginPath();
-      _ctx.arc(mid.x, mid.y, r, 0, Math.PI * 2);
+      _ctx.moveTo(fs.x, fs.y);
+      _ctx.bezierCurveTo(cp1.x, cp1.y, cp2.x, cp2.y, ts.x, ts.y);
+      _ctx.stroke();
+
+      // Dot at source (bottom of node)
+      _ctx.fillStyle = isHovered ? _fg() : 'rgba(0,0,0,0.4)';
+      _ctx.beginPath();
+      _ctx.arc(fs.x, fs.y, 3, 0, Math.PI * 2);
       _ctx.fill();
-      _ctx.fillStyle = _bg();
-      _ctx.font         = 'bold 10px "DM Sans", sans-serif';
-      _ctx.textAlign    = 'center';
-      _ctx.textBaseline = 'middle';
-      _ctx.fillText('×', mid.x, mid.y + 0.5);
-    }
+
+      // Dot at target (top of node)
+      _ctx.beginPath();
+      _ctx.arc(ts.x, ts.y, 3, 0, Math.PI * 2);
+      _ctx.fill();
+
+      // Delete badge (×) at midpoint when hovered
+      if (isHovered) {
+        const mid = { x: (fs.x + ts.x) / 2, y: (fs.y + ts.y) / 2 };
+        _ctx.fillStyle = _fg();
+        _ctx.beginPath();
+        _ctx.arc(mid.x, mid.y, 8, 0, Math.PI * 2);
+        _ctx.fill();
+        _ctx.fillStyle    = _bg();
+        _ctx.font         = 'bold 10px "DM Sans", sans-serif';
+        _ctx.textAlign    = 'center';
+        _ctx.textBaseline = 'middle';
+        _ctx.fillText('×', mid.x, mid.y + 0.5);
+      }
+    });
   });
 
   _ctx.restore();
