@@ -32,9 +32,15 @@ export function getCurrent() {
   return _nodes.find(n => n.id === _current) ?? null;
 }
 
-/** Returns direct children of a given node id. */
+/** Returns direct children of a node plus any cross-connected nodes. */
 export function getChildren(nodeId) {
-  return _nodes.filter(n => n.parentId === nodeId);
+  const treeChildren  = _nodes.filter(n => n.parentId === nodeId);
+  const currentNode   = _nodes.find(n => n.id === nodeId);
+  const crossTargets  = (currentNode?.connections ?? [])
+    .map(id => _nodes.find(n => n.id === id))
+    .filter(Boolean)
+    .filter(n => !treeChildren.some(c => c.id === n.id)); // deduplicate
+  return [...treeChildren, ...crossTargets];
 }
 
 /** Returns all root nodes (parentId === null or parentId not in nodes). */

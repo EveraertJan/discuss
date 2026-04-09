@@ -205,9 +205,26 @@ function _onPointerUp(e) {
     clearEdgeDrag();
     const state    = getState();
     const targetId = hitTest(pos.x, pos.y, state);
+
     if (targetId && targetId !== _edgeDragFromId) {
+      // Dropped on an existing node — create cross-connection
       dispatch({ type: 'ADD_EDGE', from: _edgeDragFromId, to: targetId });
+    } else if (!targetId) {
+      // Dropped on empty canvas — create a new node and connect to it
+      const world   = screenToWorld(pos.x, pos.y, state.viewport);
+      const snapped = _snap(world.x - 160, world.y - 20);
+      dispatch({
+        type:     'ADD_NODE',
+        parentId: null,
+        x:        snapped.x,
+        y:        snapped.y,
+        nodeType: NODE_TYPES.CLAIM,
+      });
+      // The new node gets the last id — connect from source to it
+      const newId = getState().nodes.at(-1)?.id;
+      if (newId) dispatch({ type: 'ADD_EDGE', from: _edgeDragFromId, to: newId });
     }
+
     _isDraggingEdge = false;
     _edgeDragFromId = null;
     _pointers.delete(e.pointerId);
