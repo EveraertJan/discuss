@@ -9,6 +9,7 @@ function uid() {
 const _state = {
   title:      'Untitled Argument',
   nodes:      [],
+  edges:      [],   // cross-connections: [{ id, from, to }]
   selectedId: null,
   viewport:   { x: 0, y: 0, scale: 1 },
 };
@@ -77,9 +78,22 @@ export function dispatch(action) {
       };
       collect(action.id);
       _state.nodes = _state.nodes.filter(n => !toDelete.has(n.id));
+      _state.edges = _state.edges.filter(e => !toDelete.has(e.from) && !toDelete.has(e.to));
       if (toDelete.has(_state.selectedId)) _state.selectedId = null;
       break;
     }
+
+    case 'ADD_EDGE': {
+      const already = _state.edges.some(e => e.from === action.from && e.to === action.to);
+      if (!already && action.from !== action.to) {
+        _state.edges.push({ id: uid(), from: action.from, to: action.to });
+      }
+      break;
+    }
+
+    case 'DELETE_EDGE':
+      _state.edges = _state.edges.filter(e => e.id !== action.id);
+      break;
 
     case 'SELECT_NODE':
       _state.selectedId = action.id ?? null;
@@ -92,6 +106,7 @@ export function dispatch(action) {
     case 'LOAD_TREE':
       _state.title      = action.tree.title ?? 'Untitled Argument';
       _state.nodes      = action.tree.nodes  ?? [];
+      _state.edges      = action.tree.edges  ?? [];
       _state.selectedId = null;
       _state.viewport   = { x: 0, y: 0, scale: 1 };
       break;
@@ -99,6 +114,7 @@ export function dispatch(action) {
     case 'NEW_TREE':
       _state.title      = 'Untitled Argument';
       _state.nodes      = [];
+      _state.edges      = [];
       _state.selectedId = null;
       _state.viewport   = { x: 0, y: 0, scale: 1 };
       break;

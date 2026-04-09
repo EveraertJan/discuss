@@ -8,10 +8,12 @@
 
 import { dispatch, getState, subscribe } from '../store.js';
 import { NODE_TYPES, NODE_TYPE_LABELS } from '../config.js';
+import { isEnabled as isHelperEnabled, analyseNode, getNextPrompt } from './helper.js';
 
 let _sidebar          = null;
 let _currentNodeId    = null;   // id of node currently rendered in sidebar
 let _currentLinkCount = 0;      // track link count to detect add/remove (not edit)
+let _helperCollapsed  = false;  // session-only collapse state for the Helper Panel
 
 // ── Public API ────────────────────────────────────────────────────────────────
 
@@ -28,10 +30,10 @@ function _onStateChange(state) {
     : null;
 
   if (!node) {
-    // Deselected — close
+    // Deselected — show placeholder (keep sidebar open)
     _currentNodeId    = null;
     _currentLinkCount = 0;
-    _close();
+    _renderPlaceholder();
     return;
   }
 
@@ -41,35 +43,46 @@ function _onStateChange(state) {
     // Different node selected — do a full re-render
     _currentNodeId    = node.id;
     _currentLinkCount = linkCount;
+    _helperCollapsed  = false;  // reset collapse on new node
     _sidebar.classList.add('open');
-    _render(node);
+    _render(node, state.nodes);
 
   } else if (linkCount !== _currentLinkCount) {
     // Same node, but a link was added or removed — refresh only the links list
     _currentLinkCount = linkCount;
     _refreshLinks(node);
+    _renderHelperPanel(node, state.nodes);
 
+  } else {
+    // Same node, same link count — user is typing in a field.
+    // Do NOT touch the fields, but refresh the helper panel analysis.
+    _renderHelperPanel(node, state.nodes);
   }
-  // Otherwise: same node, same link count — user is typing in a field.
-  // Do NOT touch the DOM; the input already has the correct value.
 }
 
-// ── Open / Close ──────────────────────────────────────────────────────────────
+// ── Placeholder (no node selected) ───────────────────────────────────────────
 
-function _close() {
-  _sidebar.classList.remove('open');
-  _sidebar.innerHTML = '';
+function _renderPlaceholder() {
+  _sidebar.classList.add('open');
+  _sidebar.innerHTML = `
+    <div class="sidebar-header">
+      <h2>Node</h2>
+    </div>
+    <div class="sidebar-placeholder">
+      <span>Select a node to adjust</span>
+    </div>
+  `;
 }
 
 // ── Full render (only on node change) ────────────────────────────────────────
 
-function _render(node) {
+function _render(node, allNodes) {
   _sidebar.innerHTML = `
     <div class="sidebar-header">
       <h2>Edit Node</h2>
-      <button class="btn-ghost js-close" title="Close">✕</button>
     </div>
     <div class="sidebar-body">
+      <div class="js-helper-panel"></div>
       <div class="field">
         <label for="sb-label">Label</label>
         <textarea id="sb-label" rows="3">${_esc(node.label)}</textarea>
@@ -100,11 +113,6 @@ function _render(node) {
       <button class="btn-primary btn-delete js-delete">Delete Node</button>
     </div>
   `;
-
-  // ── Close ────────────────────────────────────────────────────────────────
-  _sidebar.querySelector('.js-close').addEventListener('click', () => {
-    dispatch({ type: 'SELECT_NODE', id: null });
-  });
 
   // ── Label — write directly to state, do NOT re-render ──────────────────
   _sidebar.querySelector('#sb-label').addEventListener('input', e => {
@@ -155,6 +163,70 @@ function _render(node) {
 
   _sidebar.querySelector('.js-delete').addEventListener('click', () => {
     dispatch({ type: 'DELETE_NODE', id: node.id });
+  });
+
+  // Render helper panel (reads helper enabled state, no-ops if off)
+  _renderHelperPanel(node, allNodes);
+}
+
+// ── Helper Panel ──────────────────────────────────────────────────────────────
+
+function _renderHelperPanel(node, allNodes) {
+  const panel = _sidebar?.querySelector('.js-helper-panel');
+  if (!panel) return;
+
+  if (!isHelperEnabled() || _helperCollapsed) {
+    panel.innerHTML = '';
+    return;
+  }
+
+  const a      = analyseNode(node, allNodes);
+  const prompt = getNextPrompt(a);
+
+  const checks = [
+    { label: 'Claim',     ok: a.hasClaim },
+    { label: 'Grounds',   ok: a.hasGrounds },
+    { label: 'Warrant',   ok: a.hasWarrant },
+    { label: 'Rebuttal',  ok: a.hasRebuttal },
+    { label: 'Backing',   ok: a.hasBacking },
+    { label: 'Qualifier', ok: a.hasQualifier },
+  ];
+
+  const fallaciesHtml = a.fallacies.map(f => `
+    <div class="helper-fallacy">
+      <span class="helper-fallacy-icon">⚠</span>
+      <span class="helper-fallacy-name">${_esc(f.name)}</span>
+      <span class="helper-fallacy-desc" style="display:none">${_esc(f.description)}</span>
+      <button class="btn-ghost js-fallacy-toggle" title="Explain">?</button>
+    </div>
+  `).join('');
+
+  panel.innerHTML = `
+    <div class="helper-panel">
+      <div class="helper-panel-header">
+        <span class="helper-panel-title">HELPER</span>
+        <button class="btn-ghost js-helper-collapse" title="Collapse">×</button>
+      </div>
+      <div class="helper-checklist">
+        ${checks.map(c => `<div class="helper-check ${c.ok ? 'ok' : 'missing'}">${c.ok ? '✓' : '✗'} ${c.label}</div>`).join('')}
+      </div>
+      <div class="helper-prompt">${_esc(prompt)}</div>
+      ${fallaciesHtml}
+    </div>
+  `;
+
+  panel.querySelector('.js-helper-collapse')?.addEventListener('click', () => {
+    _helperCollapsed = true;
+    panel.innerHTML = '';
+  });
+
+  panel.querySelectorAll('.js-fallacy-toggle').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const desc = btn.previousElementSibling;
+      const visible = desc.style.display !== 'none';
+      desc.style.display = visible ? 'none' : 'block';
+      btn.textContent = visible ? '?' : '×';
+    });
   });
 }
 

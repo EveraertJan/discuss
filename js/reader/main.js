@@ -2,10 +2,10 @@
 
 import { loadTree, goTo, goBack, getRoots, getCurrent } from './navigator.js';
 import { initRenderer, renderLoadScreen, renderRoots, renderCurrent } from './renderer.js';
-import { initOnboarding } from '../onboarding.js';
+// import { initOnboarding } from '../onboarding.js';  // helper mode off for reader — people figure it out
 import { importJSON, pickFile } from '../io.js';
 import { openGitHubModal } from '../github-ui.js';
-import { isConfigured } from '../github.js';
+import { isConfigured, fetchPublicMap } from '../github.js';
 
 let _treeTitle = 'Discuss';
 
@@ -44,26 +44,46 @@ document.addEventListener('DOMContentLoaded', () => {
 
   document.getElementById('btn-github-reader')?.addEventListener('click', _doGitHubLoad);
 
-  // ── Initial screen ────────────────────────────────────────────────────────
+  // ── Initial screen or shared-link auto-load ───────────────────────────────
 
-  renderLoadScreen();
+  const params      = new URLSearchParams(window.location.search);
+  const sharedOwner = params.get('owner');
+  const sharedRepo  = params.get('repo');
+  const sharedFile  = params.get('file');
 
-  // Show the GitHub floating button if already configured
-  if (ghWrap) ghWrap.style.display = isConfigured() ? 'block' : 'none';
+  if (sharedOwner && sharedRepo && sharedFile) {
+    // Shared link — auto-fetch and load without any user interaction
+    renderLoadScreen(); // show load screen briefly while fetching
+    _doSharedLoad(sharedOwner, sharedRepo, sharedFile);
+  } else {
+    renderLoadScreen();
+    if (ghWrap) ghWrap.style.display = isConfigured() ? 'block' : 'none';
+  }
 
-  // ── Onboarding ────────────────────────────────────────────────────────────
-
-  initOnboarding({
-    steps: [
-      'Load a .json argument map to begin — from a file or GitHub.',
-      'Read the argument at the top. Sources are listed below it.',
-      'Tap a possible response to follow that branch.',
-      'Use the back button to retrace your steps.',
-    ],
-    storageKey: 'reader',
-    helpBtn:    document.getElementById('btn-help'),
-  });
+  // ── Onboarding — commented out, reader is self-explanatory ──────────────
+  // initOnboarding({
+  //   steps: [
+  //     'Load a .json argument map to begin — from a file or GitHub.',
+  //     'Read the argument at the top. Sources are listed below it.',
+  //     'Tap a possible response to follow that branch.',
+  //     'Use the back button to retrace your steps.',
+  //   ],
+  //   storageKey: 'reader',
+  //   helpBtn:    document.getElementById('btn-help'),
+  // });
 });
+
+// ── Auto-load from shared link ────────────────────────────────────────────────
+
+async function _doSharedLoad(owner, repo, file) {
+  try {
+    const tree = await fetchPublicMap(owner, repo, file);
+    _loadTree(tree);
+  } catch (err) {
+    renderLoadScreen();
+    alert(`Could not load shared map: ${err.message}`);
+  }
+}
 
 // ── Load from file ────────────────────────────────────────────────────────────
 

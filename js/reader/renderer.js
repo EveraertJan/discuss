@@ -88,8 +88,8 @@ export function renderCurrent(title) {
 
   _container.innerHTML = `
     <div id="node-view">
-      <div class="node-header">
-        <span class="type-badge">${_esc(typeLabel)}</span>
+      <div class="node-header" data-type="${_esc(node.type)}">
+        <span class="type-badge" data-type="${_esc(node.type)}">${_esc(typeLabel)}</span>
         <h2 class="node-label">${_esc(node.label)}</h2>
       </div>
 
@@ -140,7 +140,7 @@ export function renderCurrent(title) {
 function _responseCardHTML(node) {
   const typeLabel = NODE_TYPE_LABELS[node.type] || '';
   return `
-    <button class="response-card" data-id="${_esc(node.id)}">
+    <button class="response-card" data-id="${_esc(node.id)}" data-type="${_esc(node.type)}">
       <span class="response-label">${_esc(node.label)}</span>
       <span class="node-type">${_esc(typeLabel)}</span>
       <span class="arrow">→</span>

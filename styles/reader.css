@@ -261,6 +261,35 @@ details[open] summary::after {
   flex-shrink: 0;
 }
 
+/* ── Type colour markers ─────────────────────────── */
+
+/* Left-border colour strip on response cards */
+.response-card[data-type]         { border-left-width: 6px; }
+.response-card[data-type="claim"]     { border-left-color: #000000; }
+.response-card[data-type="support"]   { border-left-color: #00cfcf; }
+.response-card[data-type="objection"] { border-left-color: #d4380d; }
+.response-card[data-type="rebuttal"]  { border-left-color: #d48806; }
+.response-card[data-type="evidence"]  { border-left-color: #389e0d; }
+.response-card[data-type="question"]  { border-left-color: #096dd9; }
+.response-card[data-type="fallacy"]   { border-left-color: #9b59b6; }
+
+/* Type badge colour on node header */
+.type-badge[data-type="claim"]     { color: #000000;  opacity: 1; }
+.type-badge[data-type="support"]   { color: #00a0a0;  opacity: 1; }
+.type-badge[data-type="objection"] { color: #d4380d;  opacity: 1; }
+.type-badge[data-type="rebuttal"]  { color: #d48806;  opacity: 1; }
+.type-badge[data-type="evidence"]  { color: #389e0d;  opacity: 1; }
+.type-badge[data-type="question"]  { color: #096dd9;  opacity: 1; }
+.type-badge[data-type="fallacy"]   { color: #9b59b6;  opacity: 1; }
+
+/* node-type label in response card also picks up colour */
+.response-card[data-type="support"]   .node-type { color: #00a0a0;  opacity: 0.9; }
+.response-card[data-type="objection"] .node-type { color: #d4380d;  opacity: 0.9; }
+.response-card[data-type="rebuttal"]  .node-type { color: #d48806;  opacity: 0.9; }
+.response-card[data-type="evidence"]  .node-type { color: #389e0d;  opacity: 0.9; }
+.response-card[data-type="question"]  .node-type { color: #096dd9;  opacity: 0.9; }
+.response-card[data-type="fallacy"]   .node-type { color: #9b59b6;  opacity: 0.9; }
+
 .terminal-note {
   font-size: var(--text-sm);
   opacity: 0.4;
@@ -284,4 +313,39 @@ details[open] summary::after {
   text-transform: uppercase;
   opacity: 0.5;
   margin-bottom: var(--space-4);
+}
+
+/* ── Touch / coarse-pointer optimisations ────────── */
+
+@media (pointer: coarse) {
+  /* Top bar buttons */
+  #top-bar .btn-ghost {
+    min-width: 56px;
+    min-height: 44px;
+    justify-content: center;
+  }
+
+  /* Response cards: taller and easier to tap */
+  .response-card {
+    padding: var(--space-4) var(--space-4);
+    min-height: 56px;
+  }
+
+  /* Prevent iOS tap highlight */
+  .response-card {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /* Load screen buttons */
+  .load-card .btn-primary,
+  .load-card .btn-ghost {
+    min-height: 48px;
+    font-size: var(--text-base);
+  }
+
+  /* GitHub load button */
+  #btn-github-reader {
+    min-height: 48px;
+    font-size: var(--text-base);
+  }
 }

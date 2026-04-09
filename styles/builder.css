@@ -55,12 +55,6 @@ body {
   border-right: 1px solid rgba(0,0,0,0.15);
 }
 
-@media (prefers-color-scheme: dark) {
-  #toolbar .btn-ghost {
-    border-right-color: rgba(255,255,255,0.15);
-  }
-}
-
 #toolbar .btn-ghost:last-child {
   border-right: none;
 }
@@ -221,4 +215,156 @@ body {
   font-size: var(--text-md);
   font-weight: var(--weight-bold);
   margin-bottom: var(--space-2);
+}
+
+/* ── Helper Panel ────────────────────────────────── */
+
+.helper-panel {
+  border-bottom: 1px dashed var(--color-fg);
+  padding: var(--space-3) var(--space-4);
+  margin-bottom: var(--space-3);
+}
+
+.helper-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-2);
+}
+
+.helper-panel-title {
+  font-size: var(--text-xs);
+  font-weight: var(--weight-bold);
+  letter-spacing: 0.1em;
+}
+
+.helper-panel-header .btn-ghost {
+  font-size: var(--text-xs);
+  padding: 0 var(--space-1);
+  border: none;
+  opacity: 0.5;
+}
+
+.helper-checklist {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px var(--space-3);
+  margin-bottom: var(--space-3);
+}
+
+.helper-check {
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.helper-check.ok     { opacity: 1; }
+.helper-check.missing { opacity: 0.4; }
+
+.helper-prompt {
+  font-size: var(--text-xs);
+  line-height: var(--leading-normal);
+  margin-bottom: var(--space-2);
+  font-style: italic;
+}
+
+.helper-fallacy {
+  display: flex;
+  align-items: flex-start;
+  gap: 4px;
+  font-size: var(--text-xs);
+  opacity: 0.6;
+  margin-top: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.helper-fallacy-icon { flex-shrink: 0; }
+
+.helper-fallacy-name {
+  font-weight: var(--weight-medium);
+}
+
+.helper-fallacy-desc {
+  flex: 1 0 100%;
+  line-height: var(--leading-normal);
+  margin-top: 2px;
+  opacity: 0.85;
+}
+
+.helper-fallacy .btn-ghost {
+  font-size: 10px;
+  padding: 0 3px;
+  border: none;
+  opacity: 0.7;
+  margin-left: auto;
+}
+
+/* ── Touch / coarse-pointer optimisations ────────── */
+
+@media (pointer: coarse) {
+  /* Toolbar: taller tap targets */
+  #toolbar .btn-ghost {
+    min-height: 44px;
+    padding: 0 var(--space-4);
+  }
+
+  /* Sidebar body: momentum scroll on iOS */
+  .sidebar-body {
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+  }
+
+  /* Inputs: 16px prevents iOS from zooming on focus */
+  #sidebar input,
+  #sidebar textarea,
+  #sidebar select {
+    font-size: 16px;
+    min-height: 40px;
+  }
+
+  /* Footer action buttons: bigger touch targets */
+  .sidebar-footer .btn-primary {
+    min-height: 48px;
+    font-size: var(--text-base);
+  }
+
+  .sidebar-footer .btn-ghost {
+    min-height: 44px;
+  }
+
+  /* Close button in sidebar header */
+  .sidebar-header .btn-ghost {
+    min-width: 44px;
+    min-height: 44px;
+    justify-content: center;
+  }
+
+  /* Link row delete button */
+  .link-row .btn-ghost {
+    min-width: 40px;
+    min-height: 40px;
+    justify-content: center;
+  }
+
+  /* Helper panel collapse button */
+  .helper-panel-header .btn-ghost {
+    min-width: 40px;
+    min-height: 36px;
+    justify-content: center;
+  }
+}
+
+/* ── Sidebar placeholder ─────────────────────────── */
+
+.sidebar-placeholder {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.sidebar-placeholder span {
+  font-size: var(--text-xs);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  opacity: 0.35;
 }

@@ -176,29 +176,6 @@ label {
   align-items: center;
 }
 
-/* ── Dark mode ───────────────────────────────────── */
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --color-bg:      #111111;
-    --color-fg:      #ffffff;
-    --color-muted:   rgba(255, 255, 255, 0.08);
-    --color-overlay: rgba(0, 0, 0, 0.85);
-  }
-
-  .btn-primary {
-    box-shadow: 4px 4px 0 var(--color-fg);
-  }
-
-  .btn-primary:active {
-    box-shadow: 2px 2px 0 var(--color-fg);
-  }
-
-  .onboarding-card {
-    box-shadow: 4px 4px 0 var(--color-fg);
-  }
-}
-
 /* ── GitHub modal ────────────────────────────────────── */
 
 .gh-overlay {
@@ -354,10 +331,23 @@ label {
   color: inherit;
 }
 
-@media (prefers-color-scheme: dark) {
-  .gh-modal {
-    box-shadow: 4px 4px 0 var(--color-fg);
+
+/* ── Touch / coarse-pointer optimisations ────────── */
+
+@media (pointer: coarse) {
+  /* Prevent iOS input zoom: minimum 16px on all form fields */
+  input, textarea, select {
+    font-size: max(16px, var(--text-sm));
   }
-  .gh-error   { color: #ff6666; }
-  .gh-success { color: #66cc66; }
+
+  /* Remove hover effects that don't apply on touch */
+  .btn-ghost:hover,
+  .btn-primary:hover {
+    background: transparent;
+  }
+
+  /* Tap highlight suppression */
+  button {
+    -webkit-tap-highlight-color: transparent;
+  }
 }

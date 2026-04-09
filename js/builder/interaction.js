@@ -1,20 +1,39 @@
-// interaction.js — touch/mouse: pan, zoom, drag, select, double-click create
+// interaction.js — pointer input: pan, pinch-to-zoom, drag nodes, select, create
 
 import { dispatch, getState } from '../store.js';
-import { hitTest, screenToWorld, setHovered, render } from './canvas.js';
+import {
+  hitTest, screenToWorld, setHovered, setHoveredEdge,
+  hitTestConnectionDot, hitTestEdgeBadge, nearestCrossEdge,
+  setEdgeDrag, clearEdgeDrag, render,
+} from './canvas.js';
 import { NODE_TYPES } from '../config.js';
 
-const DRAG_THRESHOLD = 4;
-const GRID           = 50;   // snap-to-grid resolution in world units
+const DRAG_THRESHOLD  = 4;
+const GRID            = 50;
+const MIN_SCALE       = 0.15;
+const MAX_SCALE       = 3;
+const DOUBLE_TAP_MS   = 350;   // max ms between taps
+const DOUBLE_TAP_PX   = 40;    // max px drift between taps
 
 let _canvas          = null;
+
+// Single-pointer drag state
 let _isDraggingBg    = false;
 let _isDraggingNode  = false;
+let _isDraggingEdge  = false;   // dragging a new cross-edge connection
+let _edgeDragFromId  = null;
 let _dragNodeId      = null;
 let _lastPointer     = { x: 0, y: 0 };
 let _dragOffset      = { x: 0, y: 0 };
 let _pointerDownPos  = null;
 let _didDrag         = false;
+
+// Multi-touch / pinch state
+const _pointers      = new Map();   // pointerId → {x, y} canvas-space
+let _lastPinchDist   = 0;
+
+// Double-tap state (touch only)
+let _lastTap         = { time: 0, x: 0, y: 0 };
 
 
 // ── Init ──────────────────────────────────────────────────────────────────────
@@ -25,41 +44,66 @@ export function initInteraction(canvasEl) {
   _canvas.addEventListener('pointerdown',   _onPointerDown,  { passive: false });
   _canvas.addEventListener('pointermove',   _onPointerMove,  { passive: false });
   _canvas.addEventListener('pointerup',     _onPointerUp);
-  _canvas.addEventListener('pointercancel', _onPointerUp);
-  _canvas.addEventListener('dblclick',      _onDblClick);
+  _canvas.addEventListener('pointercancel', _onPointerCancel);
+
+  // dblclick handles mouse double-click to create nodes; touch uses double-tap in _onPointerUp
+  _canvas.addEventListener('dblclick', _onDblClick);
 
   window.addEventListener('keydown', _onKey);
 }
 
-// ── Double-click → create node ────────────────────────────────────────────────
+
+// ── Double-click (mouse) → create node ───────────────────────────────────────
 
 function _onDblClick(e) {
+  // Ignore if this came from a touch (we handle that via double-tap in pointerup)
+  if (e.pointerType === 'touch') return;
+
   const pos   = _canvasPos(e);
   const state = getState();
-
-  // Don't create if clicking an existing node
   if (hitTest(pos.x, pos.y, state)) return;
 
-  const world = screenToWorld(pos.x, pos.y, state.viewport);
-  const snapped = _snap(world.x - 80, world.y - 24); // center node on cursor
-
-  dispatch({
-    type:     'ADD_NODE',
-    parentId: null,
-    x:        snapped.x,
-    y:        snapped.y,
-    nodeType: NODE_TYPES.CLAIM,
-  });
+  const world   = screenToWorld(pos.x, pos.y, state.viewport);
+  const snapped = _snap(world.x - 160, world.y - 20); // center box on cursor
+  dispatch({ type: 'ADD_NODE', parentId: null, x: snapped.x, y: snapped.y, nodeType: NODE_TYPES.CLAIM });
 }
 
-// ── Pointer ───────────────────────────────────────────────────────────────────
+
+// ── Pointer down ──────────────────────────────────────────────────────────────
 
 function _onPointerDown(e) {
-  if (e.pointerType === 'touch' && e.touches?.length > 1) return;
   e.preventDefault();
+  const pos = _canvasPos(e);
+  _pointers.set(e.pointerId, pos);
+  _canvas.setPointerCapture(e.pointerId);
 
-  const pos   = _canvasPos(e);
+  // Two fingers — start pinch
+  if (_pointers.size === 2) {
+    // Cancel any in-progress single-finger drag
+    _isDraggingBg   = false;
+    _isDraggingNode = false;
+    _canvas.classList.remove('dragging-bg', 'dragging-node');
+    _lastPinchDist = _getPinchDist();
+    return;
+  }
+
+  // Three or more — ignore
+  if (_pointers.size > 2) return;
+
   const state = getState();
+
+  // Check connection dot first — takes priority over regular node hit
+  const dotNodeId = hitTestConnectionDot(pos.x, pos.y, state);
+  if (dotNodeId) {
+    _isDraggingEdge = true;
+    _edgeDragFromId = dotNodeId;
+    _canvas.setPointerCapture(e.pointerId);
+    setEdgeDrag({ fromId: dotNodeId, toPos: pos });
+    render(state);
+    return;
+  }
+
+  // Single finger / mouse — existing select + drag logic
   const hitId = hitTest(pos.x, pos.y, state);
 
   _pointerDownPos = pos;
@@ -79,24 +123,61 @@ function _onPointerDown(e) {
     _canvas.classList.add('dragging-bg');
     dispatch({ type: 'SELECT_NODE', id: null });
   }
-
-  _canvas.setPointerCapture(e.pointerId);
 }
+
+
+// ── Pointer move ──────────────────────────────────────────────────────────────
 
 function _onPointerMove(e) {
   e.preventDefault();
   const pos = _canvasPos(e);
+  _pointers.set(e.pointerId, pos);
 
-  if (!_isDraggingBg && !_isDraggingNode) {
-    // Hover detection
-    const state = getState();
-    const hitId = hitTest(pos.x, pos.y, state);
-    setHovered(hitId);
-    _canvas.classList.toggle('hovering-node', !!hitId);
-    render(state);
+  // ── Two-finger pinch ───────────────────────────────────────────────────────
+  if (_pointers.size === 2) {
+    const dist  = _getPinchDist();
+    const ratio = _lastPinchDist > 0 ? dist / _lastPinchDist : 1;
+    _lastPinchDist = dist;
+
+    if (isFinite(ratio) && ratio > 0 && ratio !== 1) {
+      const center   = _getPinchCenter();
+      const state    = getState();
+      const newScale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, state.viewport.scale * ratio));
+      const sc       = newScale / state.viewport.scale;
+      dispatch({
+        type:     'SET_VIEWPORT',
+        viewport: {
+          scale: newScale,
+          x:     center.x + (state.viewport.x - center.x) * sc,
+          y:     center.y + (state.viewport.y - center.y) * sc,
+        },
+      });
+    }
     return;
   }
 
+  // ── Edge drag in progress ────────────────────────────────────────────────
+  if (_isDraggingEdge) {
+    setEdgeDrag({ fromId: _edgeDragFromId, toPos: pos });
+    render(getState());
+    return;
+  }
+
+  // ── Hover (mouse only — skip on touch for performance) ────────────────────
+  if (!_isDraggingBg && !_isDraggingNode) {
+    if (e.pointerType === 'mouse') {
+      const state  = getState();
+      const hitId  = hitTest(pos.x, pos.y, state);
+      const edgeId = nearestCrossEdge(pos.x, pos.y, state);
+      setHovered(hitId);
+      setHoveredEdge(edgeId);
+      _canvas.classList.toggle('hovering-node', !!hitId);
+      render(state);
+    }
+    return;
+  }
+
+  // ── Single-pointer drag ───────────────────────────────────────────────────
   if (_pointerDownPos) {
     const dx = pos.x - _pointerDownPos.x;
     const dy = pos.y - _pointerDownPos.y;
@@ -113,7 +194,6 @@ function _onPointerMove(e) {
       viewport: { x: state.viewport.x + deltaX, y: state.viewport.y + deltaY },
     });
   } else if (_isDraggingNode && _dragNodeId) {
-    // Move live (no snap while dragging — feels better)
     const world = screenToWorld(pos.x - _dragOffset.x, pos.y - _dragOffset.y, state.viewport);
     dispatch({ type: 'MOVE_NODE', id: _dragNodeId, x: world.x, y: world.y });
   }
@@ -121,8 +201,59 @@ function _onPointerMove(e) {
   _lastPointer = pos;
 }
 
+
+// ── Pointer up ────────────────────────────────────────────────────────────────
+
 function _onPointerUp(e) {
-  // Snap to grid on release
+  const pos = _canvasPos(e);
+
+  // ── Edge drag release ─────────────────────────────────────────────────────
+  if (_isDraggingEdge) {
+    clearEdgeDrag();
+    const state    = getState();
+    const targetId = hitTest(pos.x, pos.y, state);
+    if (targetId && targetId !== _edgeDragFromId) {
+      dispatch({ type: 'ADD_EDGE', from: _edgeDragFromId, to: targetId });
+    }
+    _isDraggingEdge = false;
+    _edgeDragFromId = null;
+    _pointers.delete(e.pointerId);
+    render(getState());
+    return;
+  }
+
+  // ── Cross-edge badge click (delete) ────────────────────────────────────────
+  if (!_didDrag) {
+    const state  = getState();
+    const edgeId = hitTestEdgeBadge(pos.x, pos.y, state);
+    if (edgeId) {
+      dispatch({ type: 'DELETE_EDGE', id: edgeId });
+      setHoveredEdge(null);
+    }
+  }
+
+  // ── Double-tap (touch only) ────────────────────────────────────────────────
+  if (e.pointerType === 'touch' && !_didDrag && _pointers.size === 1) {
+    const now = Date.now();
+    const dt  = now - _lastTap.time;
+    const dx  = pos.x - _lastTap.x;
+    const dy  = pos.y - _lastTap.y;
+
+    if (dt < DOUBLE_TAP_MS && Math.sqrt(dx * dx + dy * dy) < DOUBLE_TAP_PX) {
+      // Double-tap: create node on empty space
+      const state = getState();
+      if (!hitTest(pos.x, pos.y, state)) {
+        const world   = screenToWorld(pos.x, pos.y, state.viewport);
+        const snapped = _snap(world.x - 160, world.y - 20); // center box on cursor
+        dispatch({ type: 'ADD_NODE', parentId: null, x: snapped.x, y: snapped.y, nodeType: NODE_TYPES.CLAIM });
+      }
+      _lastTap = { time: 0, x: 0, y: 0 }; // reset so triple-tap doesn't re-fire
+    } else {
+      _lastTap = { time: now, x: pos.x, y: pos.y };
+    }
+  }
+
+  // ── Snap to grid on node drag release ─────────────────────────────────────
   if (_isDraggingNode && _dragNodeId && _didDrag) {
     const state = getState();
     const node  = state.nodes.find(n => n.id === _dragNodeId);
@@ -134,11 +265,40 @@ function _onPointerUp(e) {
     }
   }
 
+  _pointers.delete(e.pointerId);
+
+  // ── Transition: pinch → single-finger pan ─────────────────────────────────
+  if (_pointers.size === 1) {
+    const [remaining] = _pointers.values();
+    _lastPinchDist  = 0;
+    _lastPointer    = remaining;
+    _pointerDownPos = remaining;
+    _didDrag        = false;
+    _isDraggingBg   = true;
+    _isDraggingNode = false;
+    _dragNodeId     = null;
+    _canvas.classList.add('dragging-bg');
+    _canvas.classList.remove('dragging-node');
+    return;
+  }
+
+  // ── Full reset ─────────────────────────────────────────────────────────────
   _canvas.classList.remove('dragging-bg', 'dragging-node', 'hovering-node');
   _isDraggingBg   = false;
   _isDraggingNode = false;
   _dragNodeId     = null;
   _pointerDownPos = null;
+  _lastPinchDist  = 0;
+}
+
+function _onPointerCancel(e) {
+  _pointers.delete(e.pointerId);
+  _canvas.classList.remove('dragging-bg', 'dragging-node', 'hovering-node');
+  _isDraggingBg   = false;
+  _isDraggingNode = false;
+  _dragNodeId     = null;
+  _pointerDownPos = null;
+  _lastPinchDist  = 0;
 }
 
 
@@ -164,18 +324,16 @@ function _onKey(e) {
   }
 }
 
+
 // ── Auto-layout ───────────────────────────────────────────────────────────────
 
 export function autoLayout(state) {
   const { nodes } = state;
   if (!nodes.length) return;
 
-  // Both step values are exact multiples of GRID (50px), so every resulting
-  // position is guaranteed on-grid with no rounding drift between siblings.
-  const LEVEL_STEP = 150;  // 3 × 50 — vertical distance between levels
-  const NODE_STEP  = 200;  // 4 × 50 — horizontal slot per node (160px wide + 40 gap)
+  const LEVEL_STEP = 150;
+  const NODE_STEP  = 350;  // NODE_WIDTH (320) + 30px gap, rounded to grid
 
-  // Build parent→children map (ignore parentIds that point to missing nodes)
   const childrenOf = {};
   const idSet = new Set(nodes.map(n => n.id));
   nodes.forEach(n => {
@@ -184,7 +342,6 @@ export function autoLayout(state) {
     childrenOf[pid].push(n.id);
   });
 
-  // BFS to assign depth levels
   const level = {};
   const queue = (childrenOf[null] || []).map(id => ({ id, lvl: 0 }));
   while (queue.length) {
@@ -193,7 +350,6 @@ export function autoLayout(state) {
     (childrenOf[id] || []).forEach(cid => queue.push({ id: cid, lvl: lvl + 1 }));
   }
 
-  // Group node ids by level
   const byLevel = {};
   nodes.forEach(n => {
     const lvl = level[n.id] ?? 0;
@@ -201,30 +357,26 @@ export function autoLayout(state) {
     byLevel[lvl].push(n.id);
   });
 
-  // Place nodes: each level centred on x=0, using exact grid multiples
   const positions = {};
   Object.entries(byLevel).forEach(([lvlStr, ids]) => {
     const lvl    = parseInt(lvlStr, 10);
     const count  = ids.length;
     const totalW = count * NODE_STEP;
-    // Snap the row's left edge to grid so all offsets stay on-grid
     const startX = Math.round(-totalW / 2 / GRID) * GRID;
-    const y      = lvl * LEVEL_STEP;   // already a multiple of GRID
-
+    const y      = lvl * LEVEL_STEP;
     ids.forEach((id, i) => {
       positions[id] = { x: startX + i * NODE_STEP, y };
     });
   });
 
-  // Dispatch a single move per node
   nodes.forEach(n => {
     const pos = positions[n.id];
     if (pos) dispatch({ type: 'MOVE_NODE', id: n.id, x: pos.x, y: pos.y });
   });
 
-  // Fit the result into view
   setTimeout(() => fitToScreen(getState()), 16);
 }
+
 
 // ── Fit to screen ─────────────────────────────────────────────────────────────
 
@@ -237,7 +389,7 @@ export function fitToScreen(state) {
   nodes.forEach(n => {
     minX = Math.min(minX, n.x);
     minY = Math.min(minY, n.y);
-    maxX = Math.max(maxX, n.x + 160);
+    maxX = Math.max(maxX, n.x + 320);
     maxY = Math.max(maxY, n.y + 80);
   });
 
@@ -260,6 +412,7 @@ export function fitToScreen(state) {
   });
 }
 
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function _canvasPos(e) {
@@ -271,10 +424,25 @@ function _w2s(wx, wy, viewport) {
   return { x: wx * viewport.scale + viewport.x, y: wy * viewport.scale + viewport.y };
 }
 
-/** Snap world coordinate to nearest GRID multiple. */
 function _snap(x, y) {
   return {
     x: Math.round(x / GRID) * GRID,
     y: Math.round(y / GRID) * GRID,
+  };
+}
+
+function _getPinchDist() {
+  const pts = [..._pointers.values()];
+  if (pts.length < 2) return 0;
+  const dx = pts[1].x - pts[0].x;
+  const dy = pts[1].y - pts[0].y;
+  return Math.sqrt(dx * dx + dy * dy);
+}
+
+function _getPinchCenter() {
+  const pts = [..._pointers.values()];
+  return {
+    x: (pts[0].x + pts[1].x) / 2,
+    y: (pts[0].y + pts[1].y) / 2,
   };
 }

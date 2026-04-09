@@ -7,7 +7,7 @@
 
 import {
   configure, getConfig, isConfigured, clearConfig,
-  verifyConfig, listMaps, saveMap, getMap, deleteMap,
+  verifyConfig, listMaps, saveMap, getMap, deleteMap, buildShareUrl,
 } from './github.js';
 
 // ── Entry point ───────────────────────────────────────────────────────────────
@@ -141,9 +141,9 @@ async function _renderMain(overlay, mode, getState, onLoad) {
       const errEl = overlay.querySelector('.gh-error');
       _setLoading(overlay, true);
       try {
-        const commitUrl = await saveMap(getState());
+        const { commitUrl, filePath } = await saveMap(getState());
         _setLoading(overlay, false);
-        _showSuccess(overlay, commitUrl);
+        _showSuccess(overlay, commitUrl, filePath);
         // Refresh the list after saving
         await _loadMapList(overlay, mode, getState, onLoad);
       } catch (err) {
@@ -244,13 +244,26 @@ function _showError(el, msg) {
   el.style.display = 'block';
 }
 
-function _showSuccess(overlay, commitUrl) {
+function _showSuccess(overlay, commitUrl, filePath) {
   const existing = overlay.querySelector('.gh-success');
   if (existing) existing.remove();
-  const el = _el('p', { className: 'gh-success' });
-  el.innerHTML = commitUrl
-    ? `Saved. <a href="${_esc(commitUrl)}" target="_blank" rel="noopener">View commit ↗</a>`
-    : 'Saved.';
+
+  const shareUrl  = filePath ? buildShareUrl(filePath) : null;
+  const el        = _el('div', { className: 'gh-success' });
+
+  el.innerHTML = `
+    <span>${commitUrl ? `Saved. <a href="${_esc(commitUrl)}" target="_blank" rel="noopener">View commit ↗</a>` : 'Saved.'}</span>
+    ${shareUrl ? `<button class="btn-primary gh-copy-link" style="margin-top:8px;width:100%;justify-content:center">Copy reader link</button>` : ''}
+  `;
+
+  if (shareUrl) {
+    el.querySelector('.gh-copy-link')?.addEventListener('click', async () => {
+      await navigator.clipboard.writeText(shareUrl).catch(() => prompt('Copy this link:', shareUrl));
+      const btn = el.querySelector('.gh-copy-link');
+      if (btn) { btn.textContent = 'Copied!'; setTimeout(() => { btn.textContent = 'Copy reader link'; }, 2000); }
+    });
+  }
+
   overlay.querySelector('.gh-modal-body')?.prepend(el);
 }
 

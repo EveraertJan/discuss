@@ -8,6 +8,7 @@ import { initOnboarding }                 from '../onboarding.js';
 import { exportJSON, importJSON, pickFile } from '../io.js';
 import { openGitHubModal }                from '../github-ui.js';
 import { NODE_TYPES }                     from '../config.js';
+import { toggle as toggleHelper, isEnabled as isHelperEnabled } from './helper.js';
 
 // ── Boot ──────────────────────────────────────────────────────────────────────
 
@@ -32,7 +33,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // ── Toolbar buttons ───────────────────────────────────────────────────────
 
   document.getElementById('btn-new')?.addEventListener('click', () => {
-    if (!getState().nodes.length || confirm('Start a new map? Unsaved changes will be lost.')) {
+    if (confirm('Start a new map? Any unsaved changes will be lost.')) {
       dispatch({ type: 'NEW_TREE' });
     }
   });
@@ -48,10 +49,6 @@ document.addEventListener('DOMContentLoaded', () => {
     exportJSON(getState());
   });
 
-  document.getElementById('btn-fit')?.addEventListener('click', () => {
-    fitToScreen(getState());
-  });
-
   document.getElementById('btn-layout')?.addEventListener('click', () => {
     autoLayout(getState());
   });
@@ -62,6 +59,20 @@ document.addEventListener('DOMContentLoaded', () => {
     const cy = (canvas.offsetHeight / 2 - state.viewport.y) / state.viewport.scale;
     dispatch({ type: 'ADD_NODE', parentId: null, x: cx - 80, y: cy - 24, nodeType: NODE_TYPES.CLAIM });
   });
+
+  // Helper Mode toggle
+  const helperBtn = document.getElementById('btn-helper');
+  function _syncHelperBtn() {
+    if (!helperBtn) return;
+    helperBtn.classList.toggle('active', isHelperEnabled());
+  }
+  helperBtn?.addEventListener('click', () => {
+    toggleHelper();
+    _syncHelperBtn();
+    // Re-render canvas so completeness dots appear/disappear
+    render(getState());
+  });
+  _syncHelperBtn(); // set initial state on load
 
   // GitHub — save and load
   document.getElementById('btn-github')?.addEventListener('click', () => {

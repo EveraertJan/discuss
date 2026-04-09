@@ -112,9 +112,13 @@ export async function saveMap(state) {
     sha = undefined; // New file
   }
 
-  const body = { message, content, ...(sha ? { sha } : {}) };
-  const result = await _req('PUT', _repoPath(filename), body);
-  return result?.commit?.html_url ?? null;
+  const body     = { message, content, ...(sha ? { sha } : {}) };
+  const result   = await _req('PUT', _repoPath(filename), body);
+  const filePath = `${MAPS_DIR}/${filename}`;
+  return {
+    commitUrl: result?.commit?.html_url ?? null,
+    filePath,
+  };
 }
 
 /**
@@ -133,4 +137,45 @@ export async function verifyConfig() {
   const cfg = getConfig();
   const res = await _req('GET', `/repos/${cfg.owner}/${cfg.repo}`);
   return res?.full_name ?? null;
+}
+
+/**
+ * Build a shareable reader URL for a saved map.
+ * The link encodes owner/repo/file as URL params so anyone can open it —
+ * the reader fetches the latest version from GitHub without needing any config.
+ *
+ * @param {string} filePath  e.g. "maps/my-argument.json"
+ */
+export function buildShareUrl(filePath) {
+  const cfg    = getConfig();
+  const base   = window.location.href.replace(/[^/]*$/, ''); // strip current filename
+  const params = new URLSearchParams({ owner: cfg.owner, repo: cfg.repo, file: filePath });
+  return `${base}reader.html?${params}`;
+}
+
+/**
+ * Fetch a map from a public GitHub repo by URL params — no PAT required.
+ * Falls back to the GitHub API with the stored PAT if the raw fetch fails
+ * (covers private repos where the user already has config stored).
+ *
+ * @param {string} owner
+ * @param {string} repo
+ * @param {string} filePath  e.g. "maps/my-argument.json"
+ */
+export async function fetchPublicMap(owner, repo, filePath) {
+  // Try raw GitHub CDN first (no auth, works for public repos, always latest)
+  const rawUrl = `https://raw.githubusercontent.com/${owner}/${repo}/HEAD/${filePath}`;
+  const rawRes = await fetch(rawUrl);
+  if (rawRes.ok) return rawRes.json();
+
+  // Fall back to API (uses stored PAT if available, covers private repos)
+  const cfg     = getConfig();
+  const headers = { 'Accept': 'application/vnd.github+json' };
+  if (cfg?.token) headers['Authorization'] = `Bearer ${cfg.token}`;
+
+  const apiRes = await fetch(`${API_BASE}/repos/${owner}/${repo}/contents/${filePath}`, { headers });
+  if (!apiRes.ok) throw new Error(`Could not load map (${apiRes.status})`);
+
+  const data = await apiRes.json();
+  return JSON.parse(_b64decode(data.content));
 }
