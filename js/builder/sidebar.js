@@ -96,6 +96,21 @@ function _render(node, allNodes) {
         </select>
       </div>
       <div class="field">
+        <label for="sb-score">Score override</label>
+        <input
+          id="sb-score"
+          type="number"
+          placeholder="default (by type)"
+          value="${node.score !== undefined && node.score !== null ? node.score : ''}"
+          style="width:100%; box-sizing:border-box;"
+        />
+        <div style="font-size:10px; color:#888; margin-top:4px; line-height:1.5;">
+          Conviction change when this node is picked.<br>
+          Leave blank to use the type default
+          (objection&nbsp;+40, support&nbsp;+20, claim&nbsp;0, fallacy&nbsp;−40).
+        </div>
+      </div>
+      <div class="field">
         <label for="sb-notes">Notes</label>
         <textarea id="sb-notes" rows="4">${_esc(node.notes || '')}</textarea>
       </div>
@@ -122,6 +137,13 @@ function _render(node, allNodes) {
   // ── Type ─────────────────────────────────────────────────────────────────
   _sidebar.querySelector('#sb-type').addEventListener('change', e => {
     dispatch({ type: 'UPDATE_NODE', id: node.id, changes: { type: e.target.value } });
+  });
+
+  // ── Score override ───────────────────────────────────────────────────────
+  _sidebar.querySelector('#sb-score').addEventListener('input', e => {
+    const raw   = e.target.value.trim();
+    const score = raw === '' ? undefined : Number(raw);
+    dispatch({ type: 'UPDATE_NODE', id: node.id, changes: { score } });
   });
 
   // ── Notes ────────────────────────────────────────────────────────────────
